@@ -29,7 +29,7 @@
             ]
         };
         
-        // ** පිටුව පූරණය වූ වහාම Viewer ලෙස සේවාදායකයට දැනුම් දෙන්න **
+        // Viewer ලෙස සේවාදායකයට දැනුම් දෙන්න
         socket.emit('join', 'viewer'); 
 
         // A අඩවියෙන් SDP Offer එකක් ලැබුණු විට
@@ -39,14 +39,25 @@
             // Offer එකක් ලැබුණු විට අලුත් Peer Connection එකක් සාදන්න
             peerConnection = new RTCPeerConnection(configuration);
 
-            // Streamer ගෙන් එන Stream එක remoteVideo එකට සම්බන්ධ කිරීම
+            // ----------------------------------------------------------------------------------
+            // ** යාවත්කාලීන කළ ontrack ශ්‍රිතය: වීඩියෝව ස්වයංක්‍රීයව Play කිරීමට උත්සාහ කරයි **
+            // ----------------------------------------------------------------------------------
             peerConnection.ontrack = (event) => {
-                // Track ලැබුණු විට වීඩියෝ element එකට පවරයි
-                if (remoteVideo.srcObject !== event.streams[0]) {
-                    remoteVideo.srcObject = event.streams[0];
-                    statusEl.textContent = 'Stream started!';
-                }
+                // Streamer ගෙන් එන Stream එක remoteVideo එකට සම්බන්ධ කිරීම
+                remoteVideo.srcObject = event.streams[0];
+                
+                // වීඩියෝව ස්වයංක්‍රීයව වාදනය කරන්න
+                remoteVideo.play()
+                    .then(() => {
+                        statusEl.textContent = 'Stream started!';
+                    })
+                    .catch(e => {
+                        // Autoplay blocked වුවහොත්, status එක යාවත්කාලීන කරන්න
+                        statusEl.textContent = 'Stream received, but Autoplay blocked. Click video.';
+                        console.error("Autoplay blocked:", e);
+                    });
             };
+            // ----------------------------------------------------------------------------------
 
             // ICE Candidate සේවාදායකය හරහා A අඩවියට යැවීම
             peerConnection.onicecandidate = (event) => {
@@ -77,4 +88,3 @@
     </script>
 </body>
 </html>
-
