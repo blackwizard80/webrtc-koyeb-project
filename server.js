@@ -4,20 +4,22 @@ const socketIo = require('socket.io');
 
 const app = express();
 const server = http.createServer(app); 
-const io = socketIo(server);
+// ** Socket.IO Configuration (Path එක නිවැරදි කිරීම) **
+const io = socketIo(server, {
+    path: '/socket.io/', // Koyeb හෝ Reverse Proxy සඳහා අවශ්‍යයි
+    transports: ['websocket', 'polling'] // සන්නිවේදනය ස්ථාවරව තබා ගැනීමට
+});
 
-// Cloud Host (Koyeb/Vercel) හෝ Localhost සඳහා Port 3000
 const PORT = process.env.PORT || 3000; 
 
 app.use(express.static('public'));
 
 const STREAMER_ROOM = 'webrtc_stream_room';
-let streamerId = null; // සජීවී streamer ගේ Socket ID එක ගබඩා කිරීමට
+let streamerId = null; 
 
 io.on('connection', (socket) => {
     console.log('A user connected:', socket.id);
 
-    // Client එක තම භූමිකාව පැවසූ විට
     socket.on('join', (role) => {
         socket.join(STREAMER_ROOM); 
 
@@ -28,7 +30,6 @@ io.on('connection', (socket) => {
         } else if (role === 'viewer') {
             console.log(`Viewer joined. ID: ${socket.id}`);
 
-            // Streamer සිටී නම්, Streamer ට Offer එකක් සාදන්න කියා උපදෙස් දෙන්න
             if (streamerId && streamerId !== socket.id) {
                 console.log(`Instructing streamer ${streamerId} to send new offer to viewer ${socket.id}.`);
                 io.to(streamerId).emit('viewer-ready', socket.id); 
@@ -36,7 +37,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Offer, Answer, ICE Candidate හුවමාරුව
     socket.on('offer', (data) => {
         socket.to(STREAMER_ROOM).emit('offer', data);
     });
@@ -61,4 +61,3 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`Signaling server running on port ${PORT}`);
 });
-
