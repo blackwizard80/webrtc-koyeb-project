@@ -18,7 +18,12 @@
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
-        const socket = io(); 
+        // ** Socket.IO Connection නිවැරදි කිරීම **
+        const socket = io({
+            path: '/socket.io/',
+            transports: ['websocket']
+        }); 
+        
         const localVideo = document.getElementById('localVideo');
         const statusEl = document.getElementById('status');
         let localStream;
@@ -46,7 +51,6 @@
         }
 
         function createPeerConnection() {
-            // **සෑම Offer එකකටම පෙර අලුත් RTCPeerConnection එකක් සාදයි**
             peerConnection = new RTCPeerConnection(configuration);
 
             if (localStream) {
@@ -62,7 +66,7 @@
             };
             
             peerConnection.onconnectionstatechange = () => {
-                statusEl.textContent = `Connection State: ${peerConnection.connectionstate}`;
+                statusEl.textContent = `Connection State: ${peerConnection.connectionState}`;
             };
         }
 
@@ -81,20 +85,16 @@
             }
         }
         
-        // ** Viewers අලුතින් පැමිණි විට සම්බන්ධතාවය නැවත ගොඩනැගීම **
+        // Viewers අලුතින් පැමිණි විට සම්බන්ධතාවය නැවත ගොඩනැගීම
         socket.on('viewer-ready', (viewerId) => {
             console.log(`New viewer (${viewerId}) is ready. Re-establishing connection.`);
             
-            // 1. පැරණි සම්බන්ධතාවය ඇත්නම් වසා දමන්න
             if (peerConnection) {
                 peerConnection.close();
                 peerConnection = null;
             }
 
-            // 2. අලුත් Peer Connection එකක් සාදන්න
             createPeerConnection(); 
-            
-            // 3. අලුත් Offer එකක් යවන්න
             createOffer();
         });
 
@@ -120,4 +120,3 @@
     </script>
 </body>
 </html>
-
