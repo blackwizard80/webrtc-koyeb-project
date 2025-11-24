@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>WebRTC Viewer (Site B)</title>
+    <style>
+        #remoteVideo {
+            width: 320px;
+            height: 240px; 
+            border: 1px solid blue;
+        }
+    </style>
+</head>
+<body>
+    <h1>Viewer (Site B) - කැමරාව බලන අඩවිය</h1>
+    <video id="remoteVideo" autoplay playsinline></video>
+    <p>Status: <span id="status">Waiting for Streamer...</span></p>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const remoteVideo = document.getElementById('remoteVideo');
+        const statusEl = document.getElementById('status');
+        let peerConnection;
+
+        const configuration = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' }
+            ]
+        };
+        
+        // ** පිටුව පූරණය වූ වහාම Viewer ලෙස සේවාදායකයට දැනුම් දෙන්න **
+        socket.emit('join', 'viewer'); 
+
+        // A අඩවියෙන් SDP Offer එකක් ලැබුණු විට
+        socket.on('offer', async (data) => {
+            statusEl.textContent = 'Offer received. Creating Answer...';
+            
+            // Offer එකක් ලැබුණු විට අලුත් Peer Connection එකක් සාදන්න
+            peerConnection = new RTCPeerConnection(configuration);
+
+            // Streamer ගෙන් එන Stream එක remoteVideo එකට සම්බන්ධ කිරීම
+            peerConnection.ontrack = (event) => {
+                // Track ලැබුණු විට වීඩියෝ element එකට පවරයි
+                if (remoteVideo.srcObject !== event.streams[0]) {
+                    remoteVideo.srcObject = event.streams[0];
+                    statusEl.textContent = 'Stream started!';
+                }
+            };
+
+            // ICE Candidate සේවාදායකය හරහා A අඩවියට යැවීම
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    socket.emit('ice-candidate', { candidate: event.candidate, id: socket.id });
+                }
+            };
+            
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp));
+            
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+            
+            socket.emit('answer', { sdp: peerConnection.localDescription, id: socket.id });
+            statusEl.textContent = 'Answer sent. Waiting for stream...';
+        });
+
+        // ICE Candidate A අඩවියෙන් ලැබුන විට එකතු කිරීම
+        socket.on('ice-candidate', async (data) => {
+            try {
+                if (data.candidate && peerConnection && peerConnection.remoteDescription) {
+                    await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+                }
+            } catch (error) {
+                console.error('Error adding ICE candidate:', error);
+            }
+        });
+    </script>
+</body>
+</html>
+
