@@ -18,7 +18,7 @@
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
-        // ** Socket.IO Connection නිවැරදි කිරීම **
+        // ** 1. Socket.IO Connection නිවැරදි කිරීම (Koyeb සඳහා) **
         const socket = io({
             path: '/socket.io/',
             transports: ['websocket']
@@ -41,20 +41,22 @@
             
             peerConnection = new RTCPeerConnection(configuration);
 
+            // ** 2. Video Track Rendering Logic නිවැරදි කිරීම **
             peerConnection.ontrack = (event) => {
                 const remoteStream = event.streams[0];
                 
+                // Stream එක නැවත නැවත පැවරීම වැළැක්වීම
                 if (remoteVideo.srcObject !== remoteStream) {
                     remoteVideo.srcObject = remoteStream;
                     
-                    // වීඩියෝව ස්වයංක්‍රීයව වාදනය කරන්න
+                    // වීඩියෝව ස්වයංක්‍රීයව වාදනය කරන්න (Autoplay lock මඟහරවා ගැනීමට)
                     remoteVideo.play()
                         .then(() => {
-                            statusEl.textContent = 'Stream started!';
+                            statusEl.textContent = 'Stream started! Connected.';
                         })
                         .catch(e => {
                             // Autoplay අවහිර වුවහොත්, Click කරන්නැයි දන්වන්න
-                            statusEl.textContent = 'Stream received, but Autoplay blocked. Click video.';
+                            statusEl.textContent = 'Stream received, but Autoplay blocked. Please tap the video screen.';
                             console.error("Autoplay blocked:", e);
                         });
                 }
