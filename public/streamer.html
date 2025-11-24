@@ -18,7 +18,7 @@
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
-        // ** Socket.IO Connection නිවැරදි කිරීම **
+        // ** 1. Socket.IO Connection නිවැරදි කිරීම (Koyeb සඳහා) **
         const socket = io({
             path: '/socket.io/',
             transports: ['websocket']
@@ -37,7 +37,11 @@
 
         async function startStream() {
             try {
-                localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                // ** 2. Audio Track එක අනිවාර්යයෙන්ම ඉල්ලන්න (Autoplay Restriction මඟහරවා ගැනීමට) **
+                localStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: true, 
+                    audio: true 
+                });
                 
                 localVideo.srcObject = localStream;
                 statusEl.textContent = 'Camera started. Waiting for Viewers...';
@@ -51,9 +55,11 @@
         }
 
         function createPeerConnection() {
+            // සෑම Offer එකකටම පෙර අලුත් RTCPeerConnection එකක් සාදයි
             peerConnection = new RTCPeerConnection(configuration);
 
             if (localStream) {
+                // Video සහ Audio Tracks දෙකම Peer Connection එකට එකතු කරයි
                 localStream.getTracks().forEach(track => {
                     peerConnection.addTrack(track, localStream);
                 });
