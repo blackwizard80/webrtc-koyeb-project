@@ -4,75 +4,35 @@ const socketIo = require('socket.io');
 
 const app = express();
 const server = http.createServer(app); 
-const io = socketIo(server, {
-    path: '/socket.io/', // Koyeb Reverse Proxy සඳහා
-    transports: ['websocket', 'polling']
-});
 
+// Socket.IO සේවාදායකය ආරම්භ කිරීම
+const io = socketIo(server);
+
+// Koyeb වැනි Cloud host එකකදී Port එක process.env.PORT මඟින් ලබා ගනී
 const PORT = process.env.PORT || 3000; 
 
+// Public ෆෝල්ඩරයේ ඇති HTML ගොනු පූරණය කිරීම
 app.use(express.static('public'));
 
-const STREAMER_ROOM = 'webrtc_stream_room';
-let streamerId = null; 
-// Viewer ගේ ID තබා ගැනීම
-const viewers = {}; 
-
+// සේවාදායකයා සම්බන්ධ වූ විට
 io.on('connection', (socket) => {
     console.log('A user connected:', socket.id);
 
-    socket.on('join', (role) => {
-        if (role === 'streamer') {
-            streamerId = socket.id;
-            socket.join(STREAMER_ROOM);
-            console.log(`Streamer joined. ID: ${streamerId}`);
-            
-        } else if (role === 'viewer') {
-            viewers[socket.id] = true;
-            console.log(`Viewer joined. ID: ${socket.id}`);
-            
-            if (streamerId && streamerId !== socket.id) {
-                // Streamer හට මෙම Viewer ට පමණක් Offer එක යවන්නට උපදෙස් දෙන්න
-                io.to(streamerId).emit('viewer-ready', socket.id); 
-            }
-        }
-    });
-
-    // Offer එක යවන්නේ විශේෂිත Viewer කෙනෙකුටයි
+    // Offer, Answer, ICE Candidate හුවමාරුව
     socket.on('offer', (data) => {
-        // data.targetId යනු offer එක ලැබිය යුතු Viewer ගේ ID
-        if (data.targetId) {
-            // TargetId එකට Offer එක යවන්න
-            io.to(data.targetId).emit('offer', { sdp: data.sdp, fromId: socket.id });
-        }
+        socket.broadcast.emit('offer', { sdp: data.sdp, id: data.id });
     });
 
-    // Answer එක යවන්නේ Streamer හට පමණයි
     socket.on('answer', (data) => {
-        if (streamerId) {
-            io.to(streamerId).emit('answer', { sdp: data.sdp, fromId: socket.id });
-        }
+        socket.broadcast.emit('answer', { sdp: data.sdp, id: data.id });
     });
 
-    // ICE Candidate යවන්නේ නිශ්චිත ග්‍රාහකයාටයි
     socket.on('ice-candidate', (data) => {
-        // Streamer ICE එකක් යවන්නේ නම්, එය යැවිය යුත්තේ Offer එක එව්ව Viewer හට
-        if (socket.id === streamerId && data.targetId) {
-            io.to(data.targetId).emit('ice-candidate', data);
-        }
-        // Viewer ICE එකක් යවන්නේ නම්, එය යැවිය යුත්තේ Streamer හට
-        else if (socket.id !== streamerId && streamerId) {
-            io.to(streamerId).emit('ice-candidate', data);
-        }
+        socket.broadcast.emit('ice-candidate', { candidate: data.candidate, id: data.id });
     });
 
     socket.on('disconnect', () => {
         console.log('User disconnected:', socket.id);
-        delete viewers[socket.id];
-        if (socket.id === streamerId) {
-            streamerId = null;
-            console.log('Streamer disconnected. Waiting for new streamer.');
-        }
     });
 });
 
