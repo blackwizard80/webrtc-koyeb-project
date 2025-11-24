@@ -18,7 +18,7 @@
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
-        // ** 1. Socket.IO Connection නිවැරදි කිරීම (Koyeb සඳහා) **
+        // ** Socket.IO Connection නිවැරදි කිරීම (Koyeb සඳහා) **
         const socket = io({
             path: '/socket.io/',
             transports: ['websocket']
@@ -28,6 +28,7 @@
         const statusEl = document.getElementById('status');
         let localStream;
         let peerConnection; 
+        let currentViewerId = null; // Offer එක යවන Viewer ගේ ID තබා ගැනීමට
 
         const configuration = {
             iceServers: [
@@ -37,7 +38,7 @@
 
         async function startStream() {
             try {
-                // ** 2. Audio Track එක අනිවාර්යයෙන්ම ඉල්ලන්න (Autoplay Restriction මඟහරවා ගැනීමට) **
+                // ** Audio Track එක අනිවාර්යයෙන්ම ඉල්ලන්න (Autoplay Restriction මඟහරවා ගැනීමට) **
                 localStream = await navigator.mediaDevices.getUserMedia({ 
                     video: true, 
                     audio: true 
@@ -55,7 +56,6 @@
         }
 
         function createPeerConnection() {
-            // සෑම Offer එකකටම පෙර අලුත් RTCPeerConnection එකක් සාදයි
             peerConnection = new RTCPeerConnection(configuration);
 
             if (localStream) {
@@ -67,7 +67,12 @@
             
             peerConnection.onicecandidate = (event) => {
                 if (event.candidate) {
-                    socket.emit('ice-candidate', { candidate: event.candidate, id: socket.id });
+                    // ICE Candidate එක යවන විට, එය targetViewerId එකට යවන්න
+                    socket.emit('ice-candidate', { 
+                        candidate: event.candidate, 
+                        id: socket.id,
+                        targetId: currentViewerId 
+                    });
                 }
             };
             
@@ -76,14 +81,16 @@
             };
         }
 
-        async function createOffer() {
+        async function createOffer(targetViewerId) {
             try {
                 const offer = await peerConnection.createOffer();
                 await peerConnection.setLocalDescription(offer);
                 
+                // Offer එක යවන විට Target ID එක ඇතුළත් කිරීම
                 socket.emit('offer', { 
                     sdp: peerConnection.localDescription, 
-                    id: socket.id 
+                    id: socket.id,
+                    targetId: targetViewerId 
                 });
                 statusEl.textContent = 'Offer sent. Waiting for Answer...';
             } catch (error) {
@@ -100,8 +107,9 @@
                 peerConnection = null;
             }
 
+            currentViewerId = viewerId; // නවතම Viewer ID එක සටහන් කරගන්න
             createPeerConnection(); 
-            createOffer();
+            createOffer(viewerId); // ලැබුණු viewerId එක Offer එකට යවන්න
         });
 
         socket.on('answer', async (data) => {
@@ -113,6 +121,7 @@
 
         socket.on('ice-candidate', async (data) => {
             try {
+                // ICE Candidate එකතු කිරීමට පෙර, එය මේ Streamer ගේ Peer Connection එකටදැයි පරීක්ෂා කිරීම අවශ්‍ය නැත.
                 if (data.candidate && peerConnection && peerConnection.remoteDescription) {
                     await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
                 }
