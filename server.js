@@ -3,32 +3,32 @@ const http = require('http');
 const socketIo = require('socket.io');
 
 const app = express();
-const server = http.createServer(app); 
-
-// Socket.IO සේවාදායකය ආරම්භ කිරීම
+const server = http.createServer(app);
 const io = socketIo(server);
 
-// Koyeb වැනි Cloud host එකකදී Port එක process.env.PORT මඟින් ලබා ගනී
-const PORT = process.env.PORT || 3000; 
+const PORT = process.env.PORT || 3000;
 
-// Public ෆෝල්ඩරයේ ඇති HTML ගොනු පූරණය කිරීම
 app.use(express.static('public'));
 
-// සේවාදායකයා සම්බන්ධ වූ විට
 io.on('connection', (socket) => {
     console.log('A user connected:', socket.id);
 
-    // Offer, Answer, ICE Candidate හුවමාරුව
+    // 1. Viewer කෙනෙක් සම්බන්ධ වූ විට Streamer ට දැනුම් දීම
+    socket.on('watcher', () => {
+        socket.broadcast.emit('watcher', socket.id);
+    });
+
+    // 2. WebRTC Signaling Data හුවමාරුව
     socket.on('offer', (data) => {
-        socket.broadcast.emit('offer', { sdp: data.sdp, id: data.id });
+        socket.broadcast.emit('offer', data);
     });
 
     socket.on('answer', (data) => {
-        socket.broadcast.emit('answer', { sdp: data.sdp, id: data.id });
+        socket.broadcast.emit('answer', data);
     });
 
     socket.on('ice-candidate', (data) => {
-        socket.broadcast.emit('ice-candidate', { candidate: data.candidate, id: data.id });
+        socket.broadcast.emit('ice-candidate', data);
     });
 
     socket.on('disconnect', () => {
