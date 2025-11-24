@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>WebRTC Streamer (Site A)</title>
+    <style>
+        #localVideo {
+            width: 320px;
+            height: 240px; 
+            border: 1px solid red;
+        }
+    </style>
+</head>
+<body>
+    <h1>Streamer (Site A) - කැමරාව යවන අඩවිය</h1>
+    <video id="localVideo" autoplay playsinline muted></video>
+    <p>Status: <span id="status">Connecting automatically...</span></p>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io(); 
+        const localVideo = document.getElementById('localVideo');
+        const statusEl = document.getElementById('status');
+        let localStream;
+        let peerConnection; 
+
+        const configuration = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' }
+            ]
+        };
+
+        async function startStream() {
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                
+                localVideo.srcObject = localStream;
+                statusEl.textContent = 'Camera started. Waiting for Viewers...';
+                
+                socket.emit('join', 'streamer');
+                
+            } catch (error) {
+                console.error('Error accessing media devices.', error);
+                statusEl.textContent = `Error: ${error.name}. Camera access denied or HTTPS required.`;
+            }
+        }
+
+        function createPeerConnection() {
+            // **සෑම Offer එකකටම පෙර අලුත් RTCPeerConnection එකක් සාදයි**
+            peerConnection = new RTCPeerConnection(configuration);
+
+            if (localStream) {
+                localStream.getTracks().forEach(track => {
+                    peerConnection.addTrack(track, localStream);
+                });
+            }
+            
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    socket.emit('ice-candidate', { candidate: event.candidate, id: socket.id });
+                }
+            };
+            
+            peerConnection.onconnectionstatechange = () => {
+                statusEl.textContent = `Connection State: ${peerConnection.connectionstate}`;
+            };
+        }
+
+        async function createOffer() {
+            try {
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                
+                socket.emit('offer', { 
+                    sdp: peerConnection.localDescription, 
+                    id: socket.id 
+                });
+                statusEl.textContent = 'Offer sent. Waiting for Answer...';
+            } catch (error) {
+                console.error('Error creating offer:', error);
+            }
+        }
+        
+        // ** Viewers අලුතින් පැමිණි විට සම්බන්ධතාවය නැවත ගොඩනැගීම **
+        socket.on('viewer-ready', (viewerId) => {
+            console.log(`New viewer (${viewerId}) is ready. Re-establishing connection.`);
+            
+            // 1. පැරණි සම්බන්ධතාවය ඇත්නම් වසා දමන්න
+            if (peerConnection) {
+                peerConnection.close();
+                peerConnection = null;
+            }
+
+            // 2. අලුත් Peer Connection එකක් සාදන්න
+            createPeerConnection(); 
+            
+            // 3. අලුත් Offer එකක් යවන්න
+            createOffer();
+        });
+
+        socket.on('answer', async (data) => {
+            if (peerConnection && !peerConnection.currentRemoteDescription) {
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp));
+                statusEl.textContent = 'Connected (Answer Received)';
+            }
+        });
+
+        socket.on('ice-candidate', async (data) => {
+            try {
+                if (data.candidate && peerConnection && peerConnection.remoteDescription) {
+                    await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+                }
+            } catch (error) {
+                console.error('Error adding ICE candidate:', error);
+            }
+        });
+        
+        window.onload = startStream;
+        
+    </script>
+</body>
+</html>
+
