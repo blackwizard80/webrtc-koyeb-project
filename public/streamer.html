@@ -4,9 +4,10 @@
     <meta charset="UTF-8">
     <title>WebRTC Streamer (Site A)</title>
     <style>
+        /* Streamer වීඩියෝවට ස්ථිර ප්‍රමාණයක් දෙන්න */
         #localVideo {
             width: 320px;
-            height: 240px; 
+            height: 240px; /* උස නියම කිරීමෙන් ප්‍රදර්ශනය තහවුරු කරයි */
             border: 1px solid red;
         }
     </style>
@@ -18,111 +19,90 @@
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
-        // ** Socket.IO Connection නිවැරදි කිරීම (Koyeb සඳහා) **
-        const socket = io({
-            path: '/socket.io/',
-            transports: ['websocket']
-        }); 
-        
+        // Server එකේ URL එක නොදී io() කැඳවීමෙන්, එය වත්මන් Host වෙත සම්බන්ධ වීමට උත්සාහ කරයි.
+        const socket = io(); 
         const localVideo = document.getElementById('localVideo');
         const statusEl = document.getElementById('status');
         let localStream;
-        let peerConnection; 
-        let currentViewerId = null; // Offer එක යවන Viewer ගේ ID තබා ගැනීමට
+        let peerConnection;
 
+        // STUN Server Configuration
         const configuration = {
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' }
             ]
         };
 
+        // 1. කැමරාව ආරම්භ කර WebRTC සම්බන්ධතාවය ගොඩනැගීමේ ප්‍රධාන ශ්‍රිතය
         async function startStream() {
             try {
-                // ** Audio Track එක අනිවාර්යයෙන්ම ඉල්ලන්න (Autoplay Restriction මඟහරවා ගැනීමට) **
-                localStream = await navigator.mediaDevices.getUserMedia({ 
-                    video: true, 
-                    audio: true 
-                });
+                // කැමරා ප්‍රවේශය ඉල්ලීම: Video පමණක් ඉල්ලයි, Audio ඉවත් කර ඇත.
+                localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
                 
+                // Local Stream එක localVideo element එකට සම්බන්ධ කිරීම
                 localVideo.srcObject = localStream;
-                statusEl.textContent = 'Camera started. Waiting for Viewers...';
+                statusEl.textContent = 'Camera started. Connecting...';
                 
-                socket.emit('join', 'streamer');
-                
+                createPeerConnection();
+                createOffer(); 
             } catch (error) {
                 console.error('Error accessing media devices.', error);
+                // පරිශීලකයා අවසරය ප්‍රතික්ෂේප කළහොත් පණිවිඩය පෙන්වයි
                 statusEl.textContent = `Error: ${error.name}. Camera access denied or HTTPS required.`;
             }
         }
 
+        // 2. Peer Connection එක නිර්මාණය කිරීම
         function createPeerConnection() {
             peerConnection = new RTCPeerConnection(configuration);
 
-            if (localStream) {
-                // Video සහ Audio Tracks දෙකම Peer Connection එකට එකතු කරයි
-                localStream.getTracks().forEach(track => {
-                    peerConnection.addTrack(track, localStream);
-                });
-            }
+            // Local Stream එකේ Tracks Peer Connection එකට එකතු කිරීම
+            localStream.getTracks().forEach(track => {
+                peerConnection.addTrack(track, localStream);
+            });
             
+            // ICE Candidate සේවාදායකය හරහා B අඩවියට යැවීම
             peerConnection.onicecandidate = (event) => {
                 if (event.candidate) {
-                    // ICE Candidate එක යවන විට, එය targetViewerId එකට යවන්න
-                    socket.emit('ice-candidate', { 
-                        candidate: event.candidate, 
-                        id: socket.id,
-                        targetId: currentViewerId 
-                    });
+                    socket.emit('ice-candidate', { candidate: event.candidate, id: socket.id });
                 }
             };
             
+            // Connection State වෙනස් වූ විට තත්ත්වය යාවත්කාලීන කිරීම
             peerConnection.onconnectionstatechange = () => {
                 statusEl.textContent = `Connection State: ${peerConnection.connectionState}`;
+                console.log('Peer Connection State:', peerConnection.connectionState);
             };
         }
 
-        async function createOffer(targetViewerId) {
+        // 3. SDP Offer එකක් නිර්මාණය කිරීම
+        async function createOffer() {
             try {
                 const offer = await peerConnection.createOffer();
                 await peerConnection.setLocalDescription(offer);
                 
-                // Offer එක යවන විට Target ID එක ඇතුළත් කිරීම
                 socket.emit('offer', { 
                     sdp: peerConnection.localDescription, 
-                    id: socket.id,
-                    targetId: targetViewerId 
+                    id: socket.id 
                 });
                 statusEl.textContent = 'Offer sent. Waiting for Answer...';
             } catch (error) {
                 console.error('Error creating offer:', error);
             }
         }
-        
-        // Viewers අලුතින් පැමිණි විට සම්බන්ධතාවය නැවත ගොඩනැගීම
-        socket.on('viewer-ready', (viewerId) => {
-            console.log(`New viewer (${viewerId}) is ready. Re-establishing connection.`);
-            
-            if (peerConnection) {
-                peerConnection.close();
-                peerConnection = null;
-            }
 
-            currentViewerId = viewerId; // නවතම Viewer ID එක සටහන් කරගන්න
-            createPeerConnection(); 
-            createOffer(viewerId); // ලැබුණු viewerId එක Offer එකට යවන්න
-        });
-
+        // 4. B අඩවියෙන් එන SDP Answer එක පිළිගැනීම
         socket.on('answer', async (data) => {
-            if (peerConnection && !peerConnection.currentRemoteDescription) {
+            if (!peerConnection.currentRemoteDescription) {
                 await peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp));
                 statusEl.textContent = 'Connected (Answer Received)';
             }
         });
 
+        // 5. ICE Candidate B අඩවියෙන් ලැබුන විට එකතු කිරීම
         socket.on('ice-candidate', async (data) => {
             try {
-                // ICE Candidate එකතු කිරීමට පෙර, එය මේ Streamer ගේ Peer Connection එකටදැයි පරීක්ෂා කිරීම අවශ්‍ය නැත.
-                if (data.candidate && peerConnection && peerConnection.remoteDescription) {
+                if (data.candidate && peerConnection.remoteDescription) {
                     await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
                 }
             } catch (error) {
@@ -130,6 +110,7 @@
             }
         });
         
+        // ** පිටුව පූරණය වූ පසු ස්වයංක්‍රීයව ආරම්භ කිරීම **
         window.onload = startStream;
         
     </script>
