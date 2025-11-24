@@ -3,68 +3,38 @@
 <head>
     <meta charset="UTF-8">
     <title>WebRTC Viewer (Site B)</title>
-    <style>
-        #remoteVideo {
-            width: 320px;
-            height: 240px; 
-            border: 1px solid blue;
-        }
-    </style>
 </head>
 <body>
     <h1>Viewer (Site B) - කැමරාව බලන අඩවිය</h1>
-    <video id="remoteVideo" autoplay playsinline></video>
+    <video id="remoteVideo" autoplay playsinline style="width: 320px; height: 240px; border: 1px solid blue;"></video>
     <p>Status: <span id="status">Waiting for Streamer...</span></p>
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
-        // ** Socket.IO Connection නිවැරදි කිරීම (Koyeb සඳහා) **
-        const socket = io({
-            path: '/socket.io/',
-            transports: ['websocket']
-        });
-        
+        const socket = io();
         const remoteVideo = document.getElementById('remoteVideo');
         const statusEl = document.getElementById('status');
         let peerConnection;
-        let streamerId = null; // Offer එක එවූ Streamer ගේ ID
 
         const configuration = {
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' }
-            ]
+            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
         };
-        
-        socket.emit('join', 'viewer'); 
 
+        // A අඩවියෙන් SDP Offer එකක් ලැබුණු විට
         socket.on('offer', async (data) => {
             statusEl.textContent = 'Offer received. Creating Answer...';
             
-            streamerId = data.fromId; // Offer එක එවූ Streamer ID එක සටහන් කරගන්න
-            
             peerConnection = new RTCPeerConnection(configuration);
 
-            // ** Video Track Rendering Logic නිවැරදි කිරීම **
+            // Streamer ගෙන් එන Stream එක remoteVideo එකට සම්බන්ධ කිරීම
             peerConnection.ontrack = (event) => {
-                const remoteStream = event.streams[0];
-                
-                if (remoteVideo.srcObject !== remoteStream) {
-                    remoteVideo.srcObject = remoteStream;
-                    
-                    remoteVideo.play()
-                        .then(() => {
-                            statusEl.textContent = 'Stream started! Connected.';
-                        })
-                        .catch(e => {
-                            statusEl.textContent = 'Stream received, but Autoplay blocked. Please tap the video screen.';
-                            console.error("Autoplay blocked:", e);
-                        });
-                }
+                remoteVideo.srcObject = event.streams[0];
+                statusEl.textContent = 'Stream started!';
             };
 
+            // ICE Candidate සේවාදායකය හරහා A අඩවියට යැවීම
             peerConnection.onicecandidate = (event) => {
                 if (event.candidate) {
-                    // ICE Candidate යවන්නේ Streamer හට පමණයි
                     socket.emit('ice-candidate', { candidate: event.candidate, id: socket.id });
                 }
             };
@@ -74,14 +44,13 @@
             const answer = await peerConnection.createAnswer();
             await peerConnection.setLocalDescription(answer);
             
-            // Answer එක යවන විට Streamer ID එක ඇතුළත් කිරීම අවශ්‍ය නැත (server එක එය හඳුනා ගනී)
             socket.emit('answer', { sdp: peerConnection.localDescription, id: socket.id });
             statusEl.textContent = 'Answer sent. Waiting for stream...';
         });
 
+        // ICE Candidate A අඩවියෙන් ලැබුන විට එකතු කිරීම
         socket.on('ice-candidate', async (data) => {
             try {
-                // ICE Candidate එකතු කිරීමට පෙර, එය මේ Viewer ගේ Peer Connection එකටදැයි පරීක්ෂා කිරීම අවශ්‍ය නැත.
                 if (data.candidate && peerConnection && peerConnection.remoteDescription) {
                     await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
                 }
